@@ -1,0 +1,18 @@
+[
+  {
+    "id": "p1",
+    "name": "해운대 횟집",
+    "category": "food",
+    "latitude": 35.1617,
+    "longitude": 129.1636,
+    "description": "해운대 근처의 유명한 횟집"
+  },
+  {
+    "id": "p2",
+    "name": "광안리 카페거리",
+    "category": "food",
+    "latitude": 35.1533,
+    "longitude": 129.1186,
+    "description": "바다 전망 카페들이 모여 있는 곳"
+  }
+]

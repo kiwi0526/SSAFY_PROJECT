@@ -1,0 +1,23 @@
+{
+  "tourism": {
+    "visits_by_category": {
+      "food": 1200,
+      "culture": 800,
+      "festival": 600,
+      "shopping": 900,
+      "lodging": 400
+    }
+  },
+  "community": {
+    "posts_per_month": [
+      { "month": "2026-01", "count": 34 },
+      { "month": "2026-02", "count": 41 },
+      { "month": "2026-03", "count": 38 },
+      { "month": "2026-04", "count": 50 },
+      { "month": "2026-05", "count": 62 },
+      { "month": "2026-06", "count": 58 }
+    ],
+    "total_posts": 283,
+    "active_users": 124
+  }
+}
