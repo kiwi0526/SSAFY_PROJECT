@@ -8,6 +8,8 @@
         <div class="field"><input v-model="form.title" placeholder="제목" required /></div>
         <div class="field"><input v-model="form.author" placeholder="작성자" required /></div>
         <div class="field"><textarea v-model="form.content" placeholder="본문" rows="4" required></textarea></div>
+        <div class="field"><input v-model="form.tagsInput" placeholder="태그 (콤마로 구분, 예: 해운대,맛집)" /></div>
+        <div class="field"><input v-model="form.password" placeholder="비밀번호 (수정/삭제 권한)" /></div>
         <div class="actions">
           <button type="submit" class="btn primary">{{ editingId ? '수정' : '작성' }}</button>
           <button type="button" class="btn" @click="resetForm">취소</button>
@@ -26,6 +28,10 @@
             <option :value="20">20</option>
           </select>
         </div>
+        <div class="tag-filters">
+          <button v-for="tag in availableTags" :key="tag" :class="['tag-btn', {selected: selectedTags.includes(tag)}]" @click="toggleTag(tag)">#{{ tag }}</button>
+          <button v-if="selectedTags.length" class="clear-tags" @click="clearTags">초기화</button>
+        </div>
       </div>
       <ul>
         <li v-for="post in paginatedPosts" :key="post.id" :id="'post-'+post.id" :class="{ highlighted: highlightedId==post.id }" class="post-item">
@@ -33,7 +39,7 @@
             <strong class="post-title">{{ post.title }}</strong>
             <span class="post-author">by {{ post.author }}</span>
             <span class="post-time">{{ formatDate(post.created_at) }}</span>
-            <span style="margin-left:12px;color:#f97316;font-weight:600">추천: {{ weeklyRecommendCount(post.id) }}</span>
+            <span style="margin-left:12px;color:var(--orange);font-weight:600">추천: {{ weeklyRecommendCount(post.id) }}</span>
           </div>
           <p class="post-content">{{ post.content }}</p>
           <div class="post-actions">
@@ -51,6 +57,19 @@
         <button class="btn" :disabled="page>=totalPages" @click="page++">다음</button>
       </div>
     </section>
+
+    <!-- 비밀번호 입력 모달 -->
+    <div v-if="authModal" class="auth-modal">
+      <div class="auth-backdrop" @click="cancelAuth"></div>
+      <div class="auth-dialog">
+        <h4>{{ authAction }} 권한 확인</h4>
+        <input v-model="authInput" placeholder="비밀번호를 입력하세요" />
+        <div class="actions">
+          <button class="btn primary" @click="confirmAuth">확인</button>
+          <button class="btn" @click="cancelAuth">취소</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -77,13 +96,22 @@ function loadPosts(){
 
 const posts = ref(loadPosts())
 const editingId = ref(null)
-const form = ref({ title: '', author: '', content: '' })
+const form = ref({ title: '', author: '', content: '', tagsInput: '', password: '' })
 
 const bookmarks = ref(loadBookmarks())
 const recommends = ref(loadRecommends())
 
 function persist(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(posts.value))
+}
+
+function parseTags(input){
+  if(!input) return []
+  return input.split(',').map(t=>t.trim()).filter(Boolean).map(t=>t.toLowerCase())
+}
+
+function encodePwd(p){
+  try{ return p ? btoa(String(p)) : null }catch(e){ return p }
 }
 
 function loadBookmarks(){
@@ -143,14 +171,24 @@ const sortedPosts = computed(() => {
 const searchQuery = ref('')
 const page = ref(1)
 const pageSize = ref(10)
+const selectedTags = ref([])
+
+const availableTags = computed(()=>{
+  const s = new Set()
+  posts.value.forEach(p=>{
+    (p.tags||[]).forEach(t=> s.add(t))
+  })
+  return Array.from(s)
+})
 
 const filteredPosts = computed(() => {
   const q = (searchQuery.value || '').toLowerCase().trim()
-  if(!q) return sortedPosts.value
   return sortedPosts.value.filter(p => {
-    return (p.title||'').toLowerCase().includes(q)
+    const matchesText = !q || (p.title||'').toLowerCase().includes(q)
       || (p.author||'').toLowerCase().includes(q)
       || (p.content||'').toLowerCase().includes(q)
+    const matchesTags = selectedTags.value.length === 0 || selectedTags.value.every(t => (p.tags||[]).includes(t))
+    return matchesText && matchesTags
   })
 })
 
@@ -179,9 +217,8 @@ watch(()=> route.query.id, async (id) => {
 
 function resetForm(){
   editingId.value = null
-  form.value = { title:'', author:'', content:'' }
+  form.value = { title:'', author:'', content:'', tagsInput:'', password: '' }
 }
-
 function savePost(){
   if(editingId.value){
     const idx = posts.value.findIndex(p => p.id === editingId.value)
@@ -189,25 +226,71 @@ function savePost(){
       posts.value[idx].title = form.value.title
       posts.value[idx].author = form.value.author
       posts.value[idx].content = form.value.content
+      // update password only if a new one was provided
+      if(form.value.password) posts.value[idx].password = encodePwd(form.value.password)
+      posts.value[idx].tags = parseTags(form.value.tagsInput)
       posts.value[idx].created_at = new Date().toISOString()
     }
   }else{
     const id = Date.now()
-    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString() })
+    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString(), password: form.value.password ? encodePwd(form.value.password) : null, tags: parseTags(form.value.tagsInput) })
   }
   persist()
   resetForm()
 }
 
-function startEdit(post){
-  editingId.value = post.id
-  form.value = { title: post.title, author: post.author, content: post.content }
+const authModal = ref(false)
+const authAction = ref('')
+const authPostId = ref(null)
+const authInput = ref('')
+
+function openAuth(post, action){
+  if(!post.password){
+    // 비밀번호가 설정되지 않은 글은 삭제/수정 모두 차단
+    alert('이 글은 비밀번호가 설정되어 있지 않습니다. 삭제하려면 글 작성 시 비밀번호를 설정하세요.')
+    return
+  }
+  authPostId.value = post.id
+  authAction.value = action
+  authInput.value = ''
+  authModal.value = true
 }
 
+function toggleTag(tag){
+  if(selectedTags.value.includes(tag)) selectedTags.value = selectedTags.value.filter(t=>t!==tag)
+  else selectedTags.value = [...selectedTags.value, tag]
+}
+
+function clearTags(){ selectedTags.value = [] }
+
+function confirmAuth(){
+  const post = posts.value.find(p=>p.id === authPostId.value)
+  if(!post){ cancelAuth(); return }
+  if(encodePwd(authInput.value) !== post.password){ alert('비밀번호가 일치하지 않습니다.'); return }
+  if(authAction.value === '삭제'){
+    if(!confirm('게시글을 삭제하시겠습니까?')){ cancelAuth(); return }
+    posts.value = posts.value.filter(p=>p.id!==post.id)
+    persist()
+  }else if(authAction.value === '수정'){
+    editingId.value = post.id
+    form.value = { title: post.title, author: post.author, content: post.content, password: '' }
+  }
+  cancelAuth()
+}
+
+function cancelAuth(){
+  authModal.value = false
+  authAction.value = ''
+  authPostId.value = null
+  authInput.value = ''
+}
+
+function startEdit(post){ openAuth(post, '수정') }
+
 function removePost(id){
-  if(!confirm('게시글을 삭제하시겠습니까?')) return
-  posts.value = posts.value.filter(p=>p.id!==id)
-  persist()
+  const post = posts.value.find(p=>p.id===id)
+  if(!post) return
+  openAuth(post, '삭제')
 }
 
 function formatDate(iso){
@@ -225,11 +308,16 @@ function formatDate(iso){
 .post-item{background:#fff;padding:12px;border-radius:6px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,0.04)}
 .post-meta{display:flex;gap:12px;align-items:center}
 .post-title{font-size:1.05rem}
-.post-author{color:#666;font-size:0.9rem}
-.post-time{color:#999;font-size:0.8rem;margin-left:auto}
+.post-author{color:var(--text-secondary);font-size:0.9rem}
+.post-time{color:var(--text-muted);font-size:0.8rem;margin-left:auto}
 .post-actions{margin-top:8px;display:flex;gap:8px}
 .btn{padding:6px 10px;border-radius:6px;border:none;background:#eee;cursor:pointer}
 .btn.primary{background:#0078d4;color:#fff}
 .btn.danger{background:#ff6b6b;color:#fff}
 .highlighted{box-shadow:0 0 0 3px rgba(255,215,0,0.25);background:#fffbe6}
+/* tag filter styles */
+.tag-filters{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.tag-btn{background:#f1f5f9;border:1px solid #e6eef3;padding:6px 10px;border-radius:999px;cursor:pointer;color:var(--text-primary)}
+.tag-btn.selected{background:#0078d4;color:#fff;border-color:#0078d4}
+.clear-tags{background:transparent;border:0;color:var(--danger, #ff6b6b);cursor:pointer;font-weight:800}
 </style>

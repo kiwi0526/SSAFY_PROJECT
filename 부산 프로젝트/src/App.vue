@@ -4,9 +4,9 @@
       <div class="container">
         <router-link to="/" class="logo">LocalHub</router-link>
         <nav class="nav">
+          <router-link class="nav-item home-link" to="/">홈</router-link>
           <router-link class="nav-item" to="/board">부산 게시판</router-link>
           <router-link class="nav-item" to="/map">지도</router-link>
-          <router-link class="nav-item" to="/dashboard">대시보드</router-link>
           <router-link class="nav-item" to="/calendar">축제 캘린더</router-link>
           <router-link class="nav-item" to="/bookmarks">북마크</router-link>
         </nav>
@@ -33,12 +33,14 @@ export default {
 };
 </script>
 
-<style scoped>
+<style>
 :root {
-  --bg: #fafafa;
-  --card: #fff;
-  --accent: #0078d4;
-  --muted: #666;
+  --navy:#082f4f; --blue:#087ea4; --sky:#e8f7fb; --ink:#182532; --muted:#687886;
+  --line:#e4ebef; --orange:#ff7a45; --white:#fff; --page:#eef3f6;
+  --text-primary: #0b2b3a; /* main readable text */
+  --text-secondary: #4b5960; /* secondary text */
+  --text-muted: #7b8b95; /* muted / placeholder */
+  --hero-text: #ffffff;
 }
 * {
   box-sizing: border-box;
@@ -48,13 +50,10 @@ html,
 #app {
   height: 100%;
   margin: 0;
-  font-family:
-    Inter,
-    Segoe UI,
-    Arial,
-    sans-serif;
-  background: var(--bg);
+  font-family: Pretendard, "Noto Sans KR", Segoe UI, Arial, sans-serif;
+  background: var(--page);
   color: #222;
+  overflow-x: hidden;
 }
 .container {
   max-width: 1100px;
@@ -62,8 +61,9 @@ html,
   padding: 0 16px;
 }
 .site-header {
-  background: #fff;
-  border-bottom: 1px solid #e6e6e6;
+  background: linear-gradient(90deg, #005f99 0%, #00a6d6 100%);
+  color: #fff;
+  border-bottom: none;
 }
 .site-header .container {
   display: flex;
@@ -73,18 +73,21 @@ html,
 }
 .logo {
   font-weight: 700;
-  color: var(--accent);
+  color: #fff;
   font-size: 1.25rem;
 }
 .nav {
   display: flex;
   gap: 12px;
+  margin-left: auto;
 }
-.nav-item {
-  color: var(--muted);
+.site-header .nav-item {
+  color: #fff !important;
   text-decoration: none;
-  font-weight: 600;
+  font-weight: 700;
 }
+.site-header .nav-item.home-link{font-weight:900;margin-right:8px}
+.site-header .nav-item:hover{opacity:0.9}
 .hero {
   padding: 64px 0;
   text-align: center;
@@ -103,17 +106,23 @@ html,
   justify-content: center;
 }
 .btn {
-  background: var(--accent);
-  color: #fff;
+  background: #fff;
+  color: #0078d4;
   border: none;
-  padding: 10px 18px;
-  border-radius: 6px;
-  cursor: not-allowed;
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+.btn.primary {
+  background: #ff7a59;
+  color: #fff;
 }
 .btn.ghost {
   background: transparent;
-  border: 1px solid #ccc;
-  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.9);
 }
 .features {
   display: flex;

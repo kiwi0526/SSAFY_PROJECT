@@ -18,7 +18,8 @@
         </div>
 
         <div class="control-actions">
-          <input v-model="query" placeholder="POI 이름으로 필터링" />
+          <input v-model="query" placeholder="POI 이름으로 필터링" @keyup.enter="searchByQuery" />
+          <button class="btn" @click="searchByQuery">검색</button>
           <button class="btn" @click="locateUser">내 위치로 이동</button>
         </div>
       </div>
@@ -30,12 +31,26 @@
       </div>
     </div>
 
-    <div ref="mapEl" class="map-container"></div>
+    <div class="map-wrap">
+      <div ref="mapEl" class="map-container"></div>
+      <aside class="poi-panel" v-if="selectedPoi">
+        <div class="poi-media">
+          <img v-if="selectedPoi.image" :src="selectedPoi.image" alt="" />
+          <div v-else class="no-image">이미지 없음</div>
+        </div>
+        <div class="poi-info">
+          <h4>{{ selectedPoi.name }}</h4>
+          <p>{{ selectedPoi.description }}</p>
+          <div class="poi-actions"><button class="btn" @click="selectedPoi=null">닫기</button></div>
+        </div>
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, reactive, watchEffect } from "vue";
+import { useRoute } from 'vue-router'
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
@@ -62,6 +77,7 @@ function normalizeItems(data, categoryLabel) {
         longitude: parseFloat(it.mapx || it.longitude || it.lng || NaN),
         description: it.addr1 || it.description || it.tel || "",
         category: categoryLabel,
+        image: it.firstimage || it.firstimage2 || it.image || "",
       }))
       .filter((p) => !isNaN(p.latitude) && !isNaN(p.longitude));
   }
@@ -74,6 +90,7 @@ function normalizeItems(data, categoryLabel) {
         longitude: parseFloat(it.longitude || it.mapx || it.lng || NaN),
         description: it.description || it.addr1 || "",
         category: categoryLabel || it.category || "",
+        image: it.firstimage || it.firstimage2 || it.image || "",
       }))
       .filter((p) => !isNaN(p.latitude) && !isNaN(p.longitude));
   }
@@ -94,6 +111,26 @@ const raw = [
 
 const pois = raw.map((p) => ({ ...p, category: p.category || "기타" }));
 
+// Validate coordinates — many data sources mix lat/lng or use swapped fields.
+// If coordinates look outside Korea but swapping them yields plausible coords, swap them.
+function fixPoiCoords(list){
+  return list.map(p=>{
+    let lat = Number(p.latitude)
+    let lng = Number(p.longitude)
+    const inKorea = (la,ln)=> (la>=33 && la<=43 && ln>=124 && ln<=132)
+    if(isNaN(lat) || isNaN(lng)) return p
+    if(inKorea(lat,lng)) return p
+    // try swap
+    if(inKorea(lng,lat)){
+      return { ...p, latitude: lng, longitude: lat }
+    }
+    // try small precision fixes: some values may be reversed sign or missing decimals
+    return p
+  })
+}
+
+const fixedPois = fixPoiCoords(pois)
+
 // Fix default icon paths for Vite
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -105,6 +142,9 @@ L.Icon.Default.mergeOptions({
 const mapEl = ref(null);
 let map = null;
 const layerGroups = {};
+const selectedPoi = ref(null)
+
+const route = useRoute()
 
 // derive categories dynamically from data
 const uniqueCats = Array.from(new Set(pois.map((p) => p.category || "기타")));
@@ -138,7 +178,7 @@ function clearMarkers() {
 function renderMarkers() {
   clearMarkers();
   const q = (query.value || "").toLowerCase().trim();
-  pois.forEach((p) => {
+  fixedPois.forEach((p) => {
     if (!visible[p.category]) return;
     if (
       q &&
@@ -162,6 +202,7 @@ function renderMarkers() {
       fillOpacity: 0.9,
     });
     marker.bindPopup(`<strong>${p.name}</strong><br/>${p.description || ""}`);
+    marker.on('click', ()=> handleMarkerClick(p))
     marker.addTo(lg);
   });
 }
@@ -182,6 +223,31 @@ onMounted(() => {
   // initial render
   console.log('Map POIs loaded:', pois.length, 'categories:', categories, categoryColors)
   renderMarkers();
+
+  // if a category was passed via query, apply filter and zoom
+  const qcat = route.query.category
+  if(qcat){
+    // set visible only for requested category if present
+    const cat = String(qcat)
+    let found = false
+    categories.forEach(c=>{
+      if(c.key === cat){ visible[c.key] = true; found = true } else { visible[c.key] = false }
+    })
+    if(found){
+      // center map on first marker of that category
+      const first = fixedPois.find(p=>p.category===cat)
+      if(first && map) map.setView([first.latitude, first.longitude], 13)
+    }
+  }
+
+  // if a theme was passed via query, apply it as a text filter and center on a matching POI
+  const qtheme = route.query.theme
+  if(qtheme){
+    query.value = String(qtheme)
+    const t = String(qtheme).toLowerCase()
+    const first = fixedPois.find(p => (p.name && p.name.toLowerCase().includes(t)) || (p.description && p.description.toLowerCase().includes(t)))
+    if(first && map) map.setView([first.latitude, first.longitude], 13)
+  }
 
   // reactive watcher to re-render when filters change
   watchEffect(() => {
@@ -226,6 +292,60 @@ function locateUser() {
     },
   );
 }
+
+function handleMarkerClick(p){
+  selectedPoi.value = p
+  if(map){
+    map.setView([p.latitude, p.longitude], 14)
+  }
+}
+
+function searchByQuery(){
+  const qRaw = (query.value||'').trim()
+  const q = qRaw.toLowerCase()
+  if(!q){
+    // clear any popup
+    return
+  }
+  // helper normalize: remove spaces and punctuation for stronger matching
+  function normalize(s){
+    return (s||'').toLowerCase().replace(/\s+/g,'').replace(/[^\p{L}\p{N}]/gu,'')
+  }
+  const nq = normalize(qRaw)
+  // collect candidates
+  const candidates = fixedPois.filter(p=>{
+    const n = normalize(p.name)
+    const d = normalize(p.description)
+    return n.includes(nq) || d.includes(nq)
+  })
+  // ranking: exact normalized match, startsWith, includes
+  const exact = candidates.find(p=> normalize(p.name) === nq)
+  let matches = []
+  if(exact) matches = [exact]
+  else {
+    const starts = candidates.filter(p=> normalize(p.name).startsWith(nq))
+    const includes = candidates.filter(p=> normalize(p.name).includes(nq) && !normalize(p.name).startsWith(nq))
+    const descIncludes = candidates.filter(p=> normalize(p.description).includes(nq) && !normalize(p.name).includes(nq))
+    matches = [...starts, ...includes, ...descIncludes]
+  }
+  if(!matches || matches.length===0){
+    alert('검색 결과가 없습니다.')
+    return
+  }
+  console.log('search matches:', matches.map(m=>({name:m.name,lat:m.latitude,lng:m.longitude})))
+  if(map){
+    // fit bounds to all matches
+    const latlngs = matches.map(m=> [m.latitude, m.longitude])
+    const bounds = L.latLngBounds(latlngs)
+    map.fitBounds(bounds, { padding: [60,60] })
+    // open popup on first match
+    const first = matches[0]
+    L.popup({maxWidth:300})
+      .setLatLng([first.latitude, first.longitude])
+      .setContent(`<strong>${first.name}</strong><br/>${first.description || ''}`)
+      .openOn(map)
+  }
+}
 </script>
 
 <style scoped>
@@ -235,6 +355,7 @@ function locateUser() {
 }
 .controls {
   padding: 12px;
+  color: var(--text-primary);
 }
 .chips {
   display: flex;
@@ -245,7 +366,7 @@ function locateUser() {
   display: flex;
 
 .debug{margin-top:8px}
-.dbg{display:inline-block;margin-right:6px;background:#eef;padding:4px 6px;border-radius:4px}
+.dbg{display:inline-block;margin-right:6px;background:#eef;padding:4px 6px;border-radius:4px;color:var(--text-primary)}
   align-items: center;
   gap: 6px;
   background: #fff;
@@ -253,4 +374,13 @@ function locateUser() {
   border-radius: 20px;
   border: 1px solid #eee;
 }
+
+.map-wrap{display:flex;gap:14px;align-items:flex-start}
+.map-container{flex:0 0 66%}
+.poi-panel{flex:0 0 34%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
+.poi-media{height:280px;overflow:hidden;border-radius:8px;background:#f4f4f4;display:flex;align-items:center;justify-content:center}
+.poi-media img{width:100%;height:100%;object-fit:cover;display:block}
+.poi-info h4{margin:10px 0 6px}
+.poi-info p{color:var(--text-secondary);font-size:14px}
+.poi-actions{margin-top:12px}
 </style>

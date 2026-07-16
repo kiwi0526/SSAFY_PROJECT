@@ -1,9 +1,15 @@
 <template>
   <div class="calendar-page container">
     <div class="cal-header">
-      <button @click="prevMonth">◀</button>
-      <div class="month-title">{{ monthTitle }}</div>
-      <button @click="nextMonth">▶</button>
+      <div class="month-controls">
+        <button @click="prevMonth" class="nav-btn">◀</button>
+        <div class="month-title">{{ monthTitle }}</div>
+        <button @click="nextMonth" class="nav-btn">▶</button>
+      </div>
+      <div class="cal-actions">
+        <button class="btn ghost" @click="prevMonth">이전</button>
+        <button class="btn primary" @click="nextMonth">다음</button>
+      </div>
     </div>
 
     <div class="calendar-grid">
@@ -12,23 +18,21 @@
         v-for="cell in cells"
         :key="cell.key"
         class="day-cell"
-        :class="{ other: cell.other }"
+        :class="{ other: cell.other, sunday: cell.dow === 0, saturday: cell.dow === 6 }"
       >
         <div class="date-row">
           <span class="date">{{ cell.day }}</span>
-          <span class="updated" v-if="cell.events && cell.events.length"
-            >갱신: {{ latestUpdated(cell.events) }}</span
-          >
+          <span class="updated" v-if="cell.events && cell.events.length">{{ latestUpdated(cell.events) }}</span>
         </div>
         <ul class="events-list">
           <li
             v-for="evt in cell.events"
             :key="evt.id"
             @click="selectEvent(evt)"
-            :style="{ borderLeft: '4px solid ' + eventColor(evt.contentid) }"
+            :style="{ background: eventColor(evt.contentid) }"
+            class="event-chip"
           >
             <strong>{{ evt.title }}</strong>
-            <div class="evt-meta">{{ evt.location }}</div>
           </li>
         </ul>
       </div>
@@ -175,21 +179,26 @@ function buildCells() {
   for (let i = firstDow - 1; i >= 0; i--) {
     const day = prevDim - i;
     const date = formatYMD(year.value, month.value - 1, day);
+    const dObj = new Date(year.value, month.value - 1, day);
     cells.push({
       key: `p-${date}`,
       other: true,
       day,
+      date,
+      dow: dObj.getDay(),
       events: eventsForDate(date),
     });
   }
   // current month
   for (let d = 1; d <= dim; d++) {
     const date = formatYMD(year.value, month.value, d);
+    const dObj = new Date(year.value, month.value, d);
     cells.push({
       key: date,
       other: false,
       day: d,
       date,
+      dow: dObj.getDay(),
       events: eventsForDate(date),
     });
   }
@@ -197,10 +206,13 @@ function buildCells() {
   while (cells.length % 7 !== 0) {
     const day = cells.length - (firstDow + dim) + 1;
     const date = formatYMD(year.value, month.value + 1, day);
+    const dObj = new Date(year.value, month.value + 1, day);
     cells.push({
       key: `n-${date}`,
       other: true,
       day,
+      date,
+      dow: dObj.getDay(),
       events: eventsForDate(date),
     });
   }
@@ -241,37 +253,25 @@ function selectEvent(evt) {
 function latestUpdated(list) {
   if (!list || list.length === 0) return "";
   const d = new Date(list[0].updated_at);
-  return d.toLocaleDateString();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${y}/${m}/${day}`;
 }
 </script>
 
 <style scoped>
-.cal-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin: 12px 0;
-}
-.month-title {
-  font-weight: 700;
-}
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-}
-.weekday {
-  font-weight: 700;
-  text-align: center;
-  padding: 6px;
-}
-.day-cell {
-  background: #fff;
-  padding: 8px;
-  border-radius: 6px;
-  min-height: 80px;
-}
+.cal-header{display:flex;align-items:center;justify-content:space-between;gap:6px;margin:6px 0;padding:4px}
+.month-title{font-weight:700;color:var(--text-primary);font-size:0.98rem}
+.month-controls{display:flex;align-items:center;gap:6px}
+.nav-btn{background:transparent;border:0;font-size:15px;padding:3px 6px;cursor:pointer}
+.cal-actions{display:flex;gap:6px}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;max-width:1100px;margin:0 auto;height:calc(100vh - 200px)}
+.weekday{font-weight:700;text-align:center;padding:3px;font-size:0.85rem}
+/* highlight weekday labels */
+.weekday:first-child{ color: #e11d48 } /* Sunday */
+.weekday:last-child{ color: #0ea5e9 } /* Saturday */
+.day-cell{background:#fff;padding:6px;border-radius:8px;height:calc((100vh - 200px) / 6);box-shadow:0 3px 8px rgba(16,47,66,0.03);overflow:hidden}
 .day-cell.other {
   opacity: 0.5;
 }
@@ -280,24 +280,17 @@ function latestUpdated(list) {
   justify-content: space-between;
   align-items: center;
 }
-.events-list {
-  list-style: none;
-  padding: 6px 0;
-  margin: 0;
-}
-.events-list li {
-  padding: 6px;
-  border-radius: 4px;
-  background: #f7f7f7;
-  margin-bottom: 6px;
-  cursor: pointer;
-}
+.day-cell .date{ color: inherit }
+.day-cell.sunday .date{ color: #e11d48 }
+.day-cell.saturday .date{ color: #0ea5e9 }
+.events-list{list-style:none;padding:4px 0 0 0;margin:0;display:flex;flex-direction:column;gap:4px}
+.event-chip{padding:4px 6px;border-radius:6px;color:#fff;font-size:0.76rem;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.03);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .detail.card {
   margin-top: 16px;
   padding: 12px;
 }
 .evt-meta {
   font-size: 0.85rem;
-  color: #666;
+  color: var(--text-secondary);
 }
 </style>

@@ -64,8 +64,8 @@ function formatDate(iso){ try{ return new Date(iso).toLocaleString() }catch(e){ 
 .post-item{background:#fff;padding:12px;border-radius:6px;margin-bottom:12px;box-shadow:0 1px 2px rgba(0,0,0,0.04)}
 .post-meta{display:flex;gap:12px;align-items:center}
 .post-title{font-size:1.05rem}
-.post-author{color:#666;font-size:0.9rem}
-.post-time{color:#999;font-size:0.8rem;margin-left:auto}
+.post-author{color:var(--text-secondary);font-size:0.9rem}
+.post-time{color:var(--text-muted);font-size:0.8rem;margin-left:auto}
 .post-actions{margin-top:8px}
 .btn{padding:6px 10px;border-radius:6px;border:none;background:#eee;cursor:pointer}
 .btn.danger{background:#ff6b6b;color:#fff}
