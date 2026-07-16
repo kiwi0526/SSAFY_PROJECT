@@ -18,7 +18,12 @@
       <div class="chat-body">
         <div class="messages">
           <div v-for="(m, i) in messages" :key="i" :class="['msg', m.from]">
-            <div class="text">{{ m.text }}</div>
+            <template v-if="m.from === 'bot'">
+              <div class="text" v-html="m.html || m.text"></div>
+            </template>
+            <template v-else>
+              <div class="text">{{ m.text }}</div>
+            </template>
           </div>
         </div>
         <div
@@ -88,14 +93,14 @@ function botReply(text) {
   const placeMatch = findPlaceMatch(t);
   if (placeMatch) return placeMatch;
   if (t.includes("축제") || t.includes("페스티벌"))
-    return "부산 축제는 캘린더에서 확인하세요. (메뉴: 축제 캘린더)";
+    return { html: `<div class="bot-title">부산 축제</div><div class="bot-sub">캘린더에서 자세한 일정을 확인하세요. (메뉴: 축제 캘린더)</div>`, text: '부산 축제은 캘린더에서 확인' };
   if (t.includes("지도") || t.includes("위치"))
-    return "지도를 열어 카테고리별 POI를 확인할 수 있습니다. (메뉴: 지도)";
+    return { html: `<div class="bot-title">지도 안내</div><div class="bot-sub">지도를 열어 카테고리별 POI를 확인할 수 있습니다. (메뉴: 지도)</div>`, text: '지도를 열어 POI 확인' };
   if (t.includes("게시판") || t.includes("글"))
-    return "부산 게시판에서 글을 작성하거나 읽을 수 있습니다. (메뉴: 부산 게시판)";
+    return { html: `<div class="bot-title">게시판 안내</div><div class="bot-sub">부산 게시판에서 글을 작성하거나 읽을 수 있습니다. (메뉴: 부산 게시판)</div>`, text: '게시판 안내' };
   if (t.includes("대시보드") || t.includes("통계"))
-    return "대시보드에서 관광/커뮤니티 통계를 확인하세요. (메뉴: 대시보드)";
-  return '죄송해요, 이해하지 못했습니다. 간단하게 "축제", "지도", "게시판" 등을 물어보세요.';
+    return { html: `<div class="bot-title">대시보드</div><div class="bot-sub">대시보드에서 관광/커뮤니티 통계를 확인하세요. (메뉴: 대시보드)</div>`, text: '대시보드 안내' };
+  return { html: `<div class="bot-title">죄송해요</div><div class="bot-sub">이해하지 못했습니다. 간단하게 <code>축제</code>, <code>지도</code>, <code>게시판</code> 등을 물어보세요.</div>`, text: '이해하지 못했습니다' };
 }
 
 function formatDateYmd(ymd) {
@@ -114,16 +119,18 @@ function findFestivalMatch(text) {
     if (toks.some((tok) => title.includes(tok))) {
       const start = it.eventstartdate || "";
       const end = it.eventenddate || start;
-      return `${it.title} — 기간: ${formatDateYmd(start)} ~ ${formatDateYmd(end)} / 장소: ${it.eventplace || it.addr1 || "정보 없음"}`;
+      const html = `<div class="bot-title">${it.title}</div><div class="bot-sub">기간: ${formatDateYmd(start)} ~ ${formatDateYmd(end)}</div><div class="bot-sub">장소: ${it.eventplace || it.addr1 || '정보 없음'}</div>`;
+      return { html, text: `${it.title} 기간: ${formatDateYmd(start)} ~ ${formatDateYmd(end)}` };
     }
   }
   // if user asked '축제' list upcoming few
   if (text.includes("축제") || text.includes("페스티벌")) {
-    const preview = festivalData.items
-      .slice(0, 5)
-      .map((it) => `${it.title} (${formatDateYmd(it.eventstartdate)})`)
-      .join("; ");
-    return `대표 축제 예시: ${preview}`;
+    const previewItems = festivalData.items.slice(0, 5);
+    const listHtml = previewItems
+      .map((it) => `<li><strong>${it.title}</strong> — ${formatDateYmd(it.eventstartdate)}</li>`)
+      .join("");
+    const html = `<div class="bot-title">대표 축제 예시</div><ul class="bot-list">${listHtml}</ul>`;
+    return { html, text: '대표 축제 예시' };
   }
   return null;
 }
@@ -136,7 +143,8 @@ function findPlaceMatch(text) {
     const name = (it.title || it.addr1 || "").toLowerCase();
     if (toks.some((tok) => name.includes(tok))) {
       const coord = `${it.mapy || it.mapx ? (it.mapy || it.latitude) + "," + (it.mapx || it.longitude) : ""}`;
-      return `${it.title} — 주소: ${it.addr1 || ""} ${it.addr2 || ""} ${coord ? " / 좌표: " + coord : ""}`;
+      const html = `<div class="bot-title">${it.title}</div><div class="bot-sub">주소: ${it.addr1 || ''} ${it.addr2 || ''}</div>${coord ? `<div class="bot-sub">좌표: ${coord}</div>` : ''}`;
+      return { html, text: it.title };
     }
   }
   return null;
@@ -147,7 +155,11 @@ function send() {
   messages.value.push({ from: "user", text: input.value });
   const reply = botReply(input.value);
   setTimeout(() => {
-    messages.value.push({ from: "bot", text: reply });
+    if (reply && typeof reply === 'object' && reply.html) {
+      messages.value.push({ from: 'bot', text: reply.text || '', html: reply.html });
+    } else {
+      messages.value.push({ from: 'bot', text: reply });
+    }
     persist();
   }, 300);
   input.value = "";
@@ -271,6 +283,10 @@ onBeforeUnmount(() => {
   background: #0078d4;
   color: #fff;
 }
+.bot-title{font-weight:900;margin-bottom:6px;color:#053b5a}
+.bot-sub{font-size:13px;color:#234e63;margin-bottom:6px}
+.bot-list{margin:8px 0 0 16px;padding:0}
+.bot-list li{margin-bottom:6px}
 .chat-input {
   display: flex;
   padding: 8px;

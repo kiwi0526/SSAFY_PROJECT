@@ -13,6 +13,15 @@
       <p>바다와 골목, 축제와 맛집까지. 지금의 부산을 발견하고 나만의 여행을 계획해 보세요.</p>
       <form class="search-box" @submit.prevent="onSearch"><input v-model="searchQuery" placeholder="어디로 떠나고 싶나요?" /><button>여행지 검색</button></form>
       <div class="keywords"><span>추천 검색어</span><button @click="setKeyword('광안리')">광안리</button><button @click="setKeyword('해운대')">해운대</button><button @click="setKeyword('감천문화마을')">감천문화마을</button><button @click="setKeyword('부산축제')">부산축제</button></div>
+      <div class="search-results" v-if="searchResults.length">
+        <div class="results-head">검색 결과 <small>"{{ searchQuery }}"</small></div>
+        <ul>
+          <li v-for="r in searchResults" :key="r._id" class="result-item">
+            <strong>{{ r.title }}</strong>
+            <div class="result-meta">{{ r.type }} · {{ r.subtitle }}</div>
+          </li>
+        </ul>
+      </div>
       <article class="hero-card">
         <div class="visual">
           <img :src="heroImage" alt="송도 해상 케이블카" class="hero-img" />
@@ -23,7 +32,7 @@
       </article>
     </div></section>
 
-    <div class="quick-wrap"><div class="quick">
+    <div class="quick-wrap" :class="{ 'search-open': searchResults.length }"><div class="quick">
       <button v-for="q in quicks" :key="q.label"><span class="circle">{{ q.icon }}</span>{{ q.label }}</button>
     </div></div>
 
@@ -64,7 +73,40 @@
 <script setup>
 import { ref } from 'vue'
 const searchQuery = ref('')
-function onSearch(){alert((searchQuery.value||'부산 여행지')+ ' 검색 미리보기')}
+const searchResults = ref([])
+
+function onSearch(){
+  const q = (searchQuery.value || '').trim().toLowerCase()
+  if(!q){
+    searchResults.value = []
+    return
+  }
+  const results = []
+  // search travelCards
+  travelCards.forEach((c, i)=>{
+    const hay = (c.title + ' ' + c.desc + ' ' + c.region + ' ' + c.tag).toLowerCase()
+    if(hay.includes(q)) results.push({ _id: 'card-'+i, type: '여행지', title: c.title, subtitle: c.region })
+  })
+  // search events
+  events.forEach((e,i)=>{
+    const hay = (e.title + ' ' + e.where + ' ' + e.time).toLowerCase()
+    if(hay.includes(q)) results.push({ _id: 'event-'+i, type: '행사', title: e.title, subtitle: e.where })
+  })
+  // search posts
+  posts.forEach((p,i)=>{
+    const hay = (p.title + ' ' + p.meta).toLowerCase()
+    if(hay.includes(q)) results.push({ _id: 'post-'+i, type: '후기', title: p.title, subtitle: p.meta })
+  })
+
+  // dedupe by title
+  const seen = new Set()
+  searchResults.value = results.filter(r => {
+    if(seen.has(r.title)) return false
+    seen.add(r.title)
+    return true
+  })
+}
+
 function setKeyword(k){searchQuery.value=k;onSearch()}
 
 const quicks = [
@@ -123,7 +165,7 @@ const notices = [
 
 .hero{min-height:570px;position:relative;overflow:hidden;color:#fff;background:radial-gradient(circle at 76% 30%,rgba(68,212,232,.55),transparent 25%),linear-gradient(120deg,#052d4d 0%,#096c8c 48%,#31b1c4 100%)}
 .sea-lines{position:absolute;inset:auto 0 0;height:190px;opacity:.55;background:repeating-radial-gradient(ellipse at 75% 130%,transparent 0 25px,rgba(255,255,255,.25) 27px 29px,transparent 31px 46px)}
-.hero .inner{position:relative;z-index:2;padding-top:78px}
+.hero .inner{position:relative;z-index:1000;padding-top:78px}
 .eyebrow{font-weight:900;font-size:14px;letter-spacing:.22em;color:#bcebf3}
 .hero h1{font-size:clamp(42px,6vw,76px);line-height:1.05;letter-spacing:-.055em;margin:14px 0 20px}
 .hero h1 em{font-style:normal;color:#89f0ef}
@@ -133,13 +175,33 @@ const notices = [
 .search-box button{height:48px;border:0;border-radius:14px;padding:0 23px;background:var(--orange);color:#fff;font-weight:900}
 .keywords{margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
 .keywords button{border:1px solid rgba(255,255,255,.32);background:rgba(255,255,255,.11);border-radius:999px;padding:7px 11px;color:#fff}
+.search-results{
+  margin-top:14px;
+  background:rgba(255,255,255,.12);
+  border-radius:12px;
+  padding:12px;
+  color:#fff;
+  max-width:680px;
+  position:relative;
+  z-index:999;
+  margin-bottom:24px;
+  max-height:300px;
+  overflow:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.search-results .results-head{font-weight:900;margin-bottom:8px}
+.search-results ul{list-style:none;margin:0;padding:0}
+.search-results .result-item{padding:8px 0;border-top:1px solid rgba(255,255,255,.06)}
+.search-results .result-item:first-child{border-top:0}
+.search-results .result-meta{font-size:12px;color:rgba(255,255,255,.9);margin-top:6px}
 .hero-card{position:absolute;right:25px;top:75px;width:305px;height:360px;background:linear-gradient(160deg,rgba(255,255,255,.96),rgba(238,251,253,.86));border-radius:30px;color:var(--ink);padding:24px;transform:rotate(2deg);box-shadow:0 32px 55px rgba(0,34,53,.30)}
 .hero-card .visual{height:190px;border-radius:22px;position:relative;overflow:hidden}
 .hero-card .visual .hero-img{width:100%;height:100%;object-fit:cover;display:block}
 .hero-card small{display:block;margin-top:19px;color:var(--blue);font-weight:900}
 .hero-card h3{font-size:23px;margin:7px 0}
 .hero-card p{font-size:13px;line-height:1.55;color:#6e7e89;margin:0}
-.quick-wrap{position:relative;z-index:4;margin-top:-52px}
+.quick-wrap{position:relative;z-index:4;margin-top:-52px;transition:margin-top .28s ease, transform .28s ease}
+.quick-wrap.search-open{margin-top:24px;transform:translateY(8px);z-index:50}
 .quick{max-width:1120px;margin:auto;background:#fff;border-radius:24px;padding:24px 22px;display:grid;grid-template-columns:repeat(7,1fr);box-shadow:0 16px 45px rgba(24,62,84,.08)}
 .quick button{border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:9px;color:#43525e;font-size:13px;font-weight:800}
 .quick .circle{width:56px;height:56px;border-radius:18px;background:var(--sky);display:grid;place-items:center;font-size:25px;transition:.18s}
