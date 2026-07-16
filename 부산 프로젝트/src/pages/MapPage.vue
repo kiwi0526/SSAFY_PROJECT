@@ -18,7 +18,7 @@
         </div>
 
         <div class="control-actions">
-          <input class="map-search" v-model="query" placeholder="POI 이름으로 필터링" @keyup.enter="searchByQuery" />
+          <input class="map-search" v-model="query" placeholder="검색" @keyup.enter="searchByQuery" />
           <button class="btn" @click="searchByQuery">검색</button>
           <button class="btn" @click="locateUser">내 위치로 이동</button>
         </div>

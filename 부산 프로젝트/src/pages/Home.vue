@@ -161,6 +161,24 @@ function goToBoard(){
 
 function openTheme(theme){
   const q = theme && theme.title ? theme.title : ''
+  // Map specific home themes to targeted map queries/categories
+  const title = String(q || '')
+  if(/바다/.test(title)){
+    // sea travel -> search for '바다'
+    router.push({ name: 'Map', query: { theme: '바다' } })
+    return
+  }
+  if(/초록|산책|공원/.test(title)){
+    // green travel -> search for '공원'
+    router.push({ name: 'Map', query: { theme: '공원' } })
+    return
+  }
+  if(/맛|맛집|맛있는/.test(title)){
+    // food theme -> use text search for '맛집'
+    router.push({ name: 'Map', query: { theme: '맛집' } })
+    return
+  }
+  // fallback: pass the theme text through
   router.push({ name: 'Map', query: { theme: q } })
 }
 function slugify(s){
