@@ -286,10 +286,9 @@ const heroTitle = ref('')
 const heroDesc = ref('')
 
 async function loadHero(){
+  // Use the already-imported `tourData` so this works after static build/deploy
   try{
-    const res = await fetch('/docs/data/부산_관광지.json')
-    const json = await res.json()
-    const items = json.items || []
+    const items = (tourData && tourData.items) ? tourData.items : (Array.isArray(tourData) ? tourData : [])
     let item = items.find(i=> i.title && i.title.includes('케이블카'))
     if(!item) item = items.find(i=> i.title && i.title.includes('송도')) || items[0]
     if(item){
