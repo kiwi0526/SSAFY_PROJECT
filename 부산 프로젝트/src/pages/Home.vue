@@ -204,9 +204,16 @@ function handleQuick(q){
 
 import tourData from "../../docs/data/부산_관광지.json"
 
+// Titles to hide on the home preview (user request)
+const hiddenHomeTitles = new Set([
+  "주식회사 놀핏",
+  "보수동 책방골목",
+  "구상반려암 (부산 국가지질공원)",
+])
+
 // build travelCards from provided data (use firstimage when available)
 const travelCards = (Array.isArray(tourData.items) ? tourData.items : [])
-  .filter(i => i.title)
+  .filter(i => i.title && !hiddenHomeTitles.has(i.title))
   .slice(0, 9)
   .map((i, idx) => ({
     thumb: ['one','two','three'][idx % 3] || 'one',
@@ -220,13 +227,40 @@ const travelCards = (Array.isArray(tourData.items) ? tourData.items : [])
     lng: i.mapx ? parseFloat(i.mapx) : (i.longitude ? parseFloat(i.longitude) : NaN),
   }))
 
-  // Ensure 구상반려암 has a representative image if missing
+  // If 구상반려암 were present, ensure it has a representative image; skipped if hidden
   travelCards.forEach(c=>{
     if(/구상반려암/.test(c.title) && !c.img){
-      // fallback to local asset - please save the provided image to src/assets/gusangbanryeoram.jpg
       c.img = '/src/assets/gusangbanryeoram.jpg'
     }
   })
+
+  // If a specific unwanted card appears (clinic), replace it with the next suitable item
+  const unwantedTitle = '더바디성형외과의원'
+  const unwantedIdx = travelCards.findIndex(c => c.title && c.title.includes(unwantedTitle))
+  if(unwantedIdx !== -1){
+    const pool = Array.isArray(tourData.items) ? tourData.items : []
+    const existing = new Set(travelCards.map(c=>c.title))
+    let replacement = null
+    for(let i = 9; i < pool.length; i++){
+      const it = pool[i]
+      if(!it || !it.title) continue
+      if(hiddenHomeTitles && hiddenHomeTitles.has && hiddenHomeTitles.has(it.title)) continue
+      if(existing.has(it.title)) continue
+      replacement = {
+        thumb: ['one','two','three'][i % 3] || 'one',
+        tag: it.lclsSystm2 || it.cat1 || '관광지',
+        title: it.title,
+        desc: it.addr1 || it.addr2 || '',
+        region: it.sigungucode || '',
+        views: '',
+        img: it.firstimage || it.firstimage2 || '',
+        lat: it.mapy ? parseFloat(it.mapy) : (it.latitude ? parseFloat(it.latitude) : NaN),
+        lng: it.mapx ? parseFloat(it.mapx) : (it.longitude ? parseFloat(it.longitude) : NaN),
+      }
+      break
+    }
+    if(replacement) travelCards[unwantedIdx] = replacement
+  }
 
 
 const heroImage = ref('')
@@ -294,9 +328,7 @@ const festivalStyle = computed(()=>{
 const themes = [
   {title:'부산 바다 하루 코스',desc:'송정에서 광안리까지, 눈부신 부산의 해안선을 따라 떠나는 여행', img:'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1200&auto=format&fit=crop'},
   {title:'맛있는 부산',desc:'시장과 로컬 맛집', img:'https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop'},
-  {title:'야경 명소',desc:'빛나는 부산의 밤', img:'https://images.unsplash.com/photo-1499346030926-9a72daac6c63?q=80&w=1200&auto=format&fit=crop'},
-  {title:'초록 산책',desc:'공원과 숲길', img:'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200&auto=format&fit=crop'},
-  {title:'역사 여행',desc:'시간을 걷는 골목', img:'https://images.unsplash.com/photo-1549880338-65ddcdfd017b?q=80&w=1200&auto=format&fit=crop'}
+  {title:'초록 산책',desc:'공원과 숲길', img:'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1200&auto=format&fit=crop'}
 ]
 
 const events = [

@@ -18,21 +18,25 @@
         </div>
 
         <div class="control-actions">
-          <input v-model="query" placeholder="POI 이름으로 필터링" @keyup.enter="searchByQuery" />
+          <input class="map-search" v-model="query" placeholder="POI 이름으로 필터링" @keyup.enter="searchByQuery" />
           <button class="btn" @click="searchByQuery">검색</button>
           <button class="btn" @click="locateUser">내 위치로 이동</button>
         </div>
       </div>
-      <div class="debug container">
-        <small>POI count: {{ pois.length }}</small>
-        <div class="debug-list">
-          <span v-for="(p,i) in pois.slice(0,6)" :key="i" class="dbg">{{ p.name }}{{ i<5?',' : '' }}</span>
-        </div>
-      </div>
+      <!-- debug info removed for cleaner UI -->
     </div>
 
-    <div class="map-wrap">
+    <div class="map-wrap" :class="{ 'search-active': searchActive }">
       <div ref="mapEl" class="map-container"></div>
+      <aside class="results-panel" v-if="searchActive">
+        <div class="results-header"><strong>검색 결과</strong><button class="btn-sm" @click="clearSearch">닫기</button></div>
+        <ul class="results-list">
+          <li v-for="(r,i) in searchResults" :key="i" class="result-item" @click="openSearchResult(r)">
+            <div class="r-title">{{ r.name }}</div>
+            <div class="r-sub">{{ r.category }} · {{ r.description }}</div>
+          </li>
+        </ul>
+      </aside>
       <aside class="poi-panel" v-if="selectedPoi">
         <div class="poi-media">
           <img v-if="selectedPoi.image" :src="selectedPoi.image" alt="" />
@@ -118,18 +122,28 @@ function fixPoiCoords(list){
     let lat = Number(p.latitude)
     let lng = Number(p.longitude)
     const inKorea = (la,ln)=> (la>=33 && la<=43 && ln>=124 && ln<=132)
-    if(isNaN(lat) || isNaN(lng)) return p
-    if(inKorea(lat,lng)) return p
+    if(isNaN(lat) || isNaN(lng)) return { ...p, valid:false }
+    if(inKorea(lat,lng)) return { ...p, valid:true }
     // try swap
     if(inKorea(lng,lat)){
-      return { ...p, latitude: lng, longitude: lat }
+      return { ...p, latitude: lng, longitude: lat, valid:true }
     }
-    // try small precision fixes: some values may be reversed sign or missing decimals
-    return p
+    // not plausible coordinates for Korea — mark invalid so renderer can skip
+    return { ...p, valid:false }
   })
 }
 
 const fixedPois = fixPoiCoords(pois)
+
+// Names to hide from the app (user-requested)
+const hiddenNames = new Set([
+  "주식회사 놀핏",
+  "보수동 책방골목",
+  "구상반려암 (부산 국가지질공원)",
+])
+
+// Apply blacklist to produce the POIs actually used in rendering/searching
+const filteredPois = fixedPois.filter(p => !hiddenNames.has(p.name))
 
 // Fix default icon paths for Vite
 delete L.Icon.Default.prototype._getIconUrl;
@@ -168,6 +182,8 @@ const visible = reactive({});
 categories.forEach((c) => (visible[c.key] = true));
 
 const query = ref("");
+const searchResults = ref([])
+const searchActive = ref(false)
 let userMarker = null;
 let userCircle = null;
 
@@ -178,7 +194,8 @@ function clearMarkers() {
 function renderMarkers() {
   clearMarkers();
   const q = (query.value || "").toLowerCase().trim();
-  fixedPois.forEach((p) => {
+  filteredPois.forEach((p) => {
+    if(!p.valid) return;
     if (!visible[p.category]) return;
     if (
       q &&
@@ -224,6 +241,11 @@ onMounted(() => {
   console.log('Map POIs loaded:', pois.length, 'categories:', categories, categoryColors)
   renderMarkers();
 
+  // clicking on the map background should close the search results panel
+  map.on('click', () => {
+    clearSearch()
+  })
+
   // if a category was passed via query, apply filter and zoom
   const qcat = route.query.category
   if(qcat){
@@ -234,9 +256,15 @@ onMounted(() => {
       if(c.key === cat){ visible[c.key] = true; found = true } else { visible[c.key] = false }
     })
     if(found){
-      // center map on first marker of that category
-      const first = fixedPois.find(p=>p.category===cat)
-      if(first && map) map.setView([first.latitude, first.longitude], 13)
+      // show results for that category and fit bounds
+      const matches = filteredPois.filter(p => p.category === cat && p.valid)
+      if(matches.length && map){
+        searchResults.value = matches
+        searchActive.value = true
+        const latlngs = matches.map(m=> [m.latitude, m.longitude])
+        const bounds = L.latLngBounds(latlngs)
+        map.fitBounds(bounds, { padding: [60,60] })
+      }
     }
   }
 
@@ -245,8 +273,9 @@ onMounted(() => {
   if(qtheme){
     query.value = String(qtheme)
     const t = String(qtheme).toLowerCase()
-    const first = fixedPois.find(p => (p.name && p.name.toLowerCase().includes(t)) || (p.description && p.description.toLowerCase().includes(t)))
-    if(first && map) map.setView([first.latitude, first.longitude], 13)
+    // set query and run search to show panel of matching POIs
+    // call searchByQuery() to populate searchResults
+    searchByQuery()
   }
 
   // reactive watcher to re-render when filters change
@@ -295,6 +324,8 @@ function locateUser() {
 
 function handleMarkerClick(p){
   selectedPoi.value = p
+  // close search panel when selecting a marker
+  clearSearch()
   if(map){
     map.setView([p.latitude, p.longitude], 14)
   }
@@ -304,7 +335,20 @@ function searchByQuery(){
   const qRaw = (query.value||'').trim()
   const q = qRaw.toLowerCase()
   if(!q){
-    // clear any popup
+    // empty query: deactivate search panel and focus map on selected categories
+    searchActive.value = false
+    searchResults.value = []
+    const selectedCategories = categories.filter(c => visible[c.key]).map(c => c.key)
+    const matches = filteredPois.filter(p => p.valid && selectedCategories.includes(p.category))
+    if(!matches || matches.length === 0){
+      alert('선택된 카테고리에 해당하는 장소가 없습니다.')
+      return
+    }
+    if(map){
+      const latlngs = matches.map(m=> [m.latitude, m.longitude])
+      const bounds = L.latLngBounds(latlngs)
+      map.fitBounds(bounds, { padding: [60,60] })
+    }
     return
   }
   // helper normalize: remove spaces and punctuation for stronger matching
@@ -313,7 +357,8 @@ function searchByQuery(){
   }
   const nq = normalize(qRaw)
   // collect candidates
-  const candidates = fixedPois.filter(p=>{
+  const candidates = filteredPois.filter(p=>{
+    if(!p.valid) return false
     const n = normalize(p.name)
     const d = normalize(p.description)
     return n.includes(nq) || d.includes(nq)
@@ -330,8 +375,13 @@ function searchByQuery(){
   }
   if(!matches || matches.length===0){
     alert('검색 결과가 없습니다.')
+    searchActive.value = false
+    searchResults.value = []
     return
   }
+  // set search results and show panel
+  searchResults.value = matches
+  searchActive.value = true
   console.log('search matches:', matches.map(m=>({name:m.name,lat:m.latitude,lng:m.longitude})))
   if(map){
     // fit bounds to all matches
@@ -345,6 +395,20 @@ function searchByQuery(){
       .setContent(`<strong>${first.name}</strong><br/>${first.description || ''}`)
       .openOn(map)
   }
+}
+
+function openSearchResult(p){
+  selectedPoi.value = p
+  if(map){
+    map.setView([p.latitude, p.longitude], 14)
+    L.popup({maxWidth:300}).setLatLng([p.latitude, p.longitude]).setContent(`<strong>${p.name}</strong><br/>${p.description || ''}`).openOn(map)
+  }
+}
+
+function clearSearch(){
+  searchActive.value = false
+  searchResults.value = []
+  query.value = ''
 }
 </script>
 
@@ -365,8 +429,7 @@ function searchByQuery(){
 .chip {
   display: flex;
 
-.debug{margin-top:8px}
-.dbg{display:inline-block;margin-right:6px;background:#eef;padding:4px 6px;border-radius:4px;color:var(--text-primary)}
+/* debug styles removed */
   align-items: center;
   gap: 6px;
   background: #fff;
@@ -375,9 +438,29 @@ function searchByQuery(){
   border: 1px solid #eee;
 }
 
-.map-wrap{display:flex;gap:14px;align-items:flex-start}
-.map-container{flex:0 0 66%}
-.poi-panel{flex:0 0 34%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
+.map-search{height:42px;border-radius:22px;padding:6px 14px;border:1px solid #e6eef2;min-width:220px}
+.control-actions .btn{margin-left:8px}
+.btn-sm{background:#fff;border:1px solid #e6eef2;border-radius:8px;padding:6px 8px}
+
+.map-wrap{
+  display:flex;
+  gap:14px;
+  align-items:flex-start;
+  max-width:1200px; /* keep content from stretching edge-to-edge */
+  margin:0 auto; /* center the map area */
+  padding:0 20px; /* breathing room on left/right */
+  box-sizing:border-box;
+}
+.map-container{flex:1 1 100%;min-width:0;transition:all .22s ease}
+.map-wrap.search-active .map-container{flex:0 0 66%}
+.results-panel,.poi-panel{flex:0 0 34%;background:#fff;border-radius:12px;padding:12px;box-shadow:0 8px 30px rgba(0,0,0,0.08)}
+.results-panel{display:flex;flex-direction:column;max-height:70vh;overflow:auto}
+.results-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.results-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.result-item{padding:10px;border-radius:10px;border:1px solid #f0f4f6;cursor:pointer}
+.result-item:hover{background:#f6fbfd}
+.r-title{font-weight:800}
+.r-sub{font-size:13px;color:var(--text-secondary)}
 .poi-media{height:280px;overflow:hidden;border-radius:8px;background:#f4f4f4;display:flex;align-items:center;justify-content:center}
 .poi-media img{width:100%;height:100%;object-fit:cover;display:block}
 .poi-info h4{margin:10px 0 6px}

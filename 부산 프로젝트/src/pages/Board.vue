@@ -9,6 +9,14 @@
         <div class="field"><input v-model="form.author" placeholder="작성자" required /></div>
         <div class="field"><textarea v-model="form.content" placeholder="본문" rows="4" required></textarea></div>
         <div class="field"><input v-model="form.tagsInput" placeholder="태그 (콤마로 구분, 예: 해운대,맛집)" /></div>
+        <div class="field file-input">
+          <label>이미지 첨부 (선택)</label>
+          <input type="file" accept="image/*" @change="onFileChange" />
+          <div v-if="form.image" class="image-preview">
+            <img :src="form.image" alt="preview" />
+            <button type="button" class="btn" @click="removeImage">이미지 제거</button>
+          </div>
+        </div>
         <div class="field"><input v-model="form.password" placeholder="비밀번호 (수정/삭제 권한)" /></div>
         <div class="actions">
           <button type="submit" class="btn primary">{{ editingId ? '수정' : '작성' }}</button>
@@ -41,7 +49,10 @@
             <span class="post-time">{{ formatDate(post.created_at) }}</span>
             <span style="margin-left:12px;color:var(--orange);font-weight:600">추천: {{ weeklyRecommendCount(post.id) }}</span>
           </div>
-          <p class="post-content">{{ post.content }}</p>
+          <div class="post-body">
+            <p class="post-content">{{ post.content }}</p>
+            <div v-if="post.image" class="post-thumb"><img :src="post.image" alt="post image" /></div>
+          </div>
           <div class="post-actions">
             <button class="btn" @click="startEdit(post)">편집</button>
             <button class="btn danger" @click="removePost(post.id)">삭제</button>
@@ -96,7 +107,7 @@ function loadPosts(){
 
 const posts = ref(loadPosts())
 const editingId = ref(null)
-const form = ref({ title: '', author: '', content: '', tagsInput: '', password: '' })
+const form = ref({ title: '', author: '', content: '', tagsInput: '', password: '', image: '' })
 
 const bookmarks = ref(loadBookmarks())
 const recommends = ref(loadRecommends())
@@ -217,7 +228,7 @@ watch(()=> route.query.id, async (id) => {
 
 function resetForm(){
   editingId.value = null
-  form.value = { title:'', author:'', content:'', tagsInput:'', password: '' }
+  form.value = { title:'', author:'', content:'', tagsInput:'', password: '', image: '' }
 }
 function savePost(){
   if(editingId.value){
@@ -226,6 +237,8 @@ function savePost(){
       posts.value[idx].title = form.value.title
       posts.value[idx].author = form.value.author
       posts.value[idx].content = form.value.content
+      // update image (allow clearing)
+      posts.value[idx].image = form.value.image || null
       // update password only if a new one was provided
       if(form.value.password) posts.value[idx].password = encodePwd(form.value.password)
       posts.value[idx].tags = parseTags(form.value.tagsInput)
@@ -233,7 +246,7 @@ function savePost(){
     }
   }else{
     const id = Date.now()
-    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString(), password: form.value.password ? encodePwd(form.value.password) : null, tags: parseTags(form.value.tagsInput) })
+    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString(), password: form.value.password ? encodePwd(form.value.password) : null, tags: parseTags(form.value.tagsInput), image: form.value.image || null })
   }
   persist()
   resetForm()
@@ -273,7 +286,7 @@ function confirmAuth(){
     persist()
   }else if(authAction.value === '수정'){
     editingId.value = post.id
-    form.value = { title: post.title, author: post.author, content: post.content, password: '' }
+    form.value = { title: post.title, author: post.author, content: post.content, tagsInput: (post.tags||[]).join(','), password: '', image: post.image || '' }
   }
   cancelAuth()
 }
@@ -296,6 +309,24 @@ function removePost(id){
 function formatDate(iso){
   try{ return new Date(iso).toLocaleString() }catch(e){ return iso }
 }
+
+// image handlers
+function onFileChange(e){
+  const f = e.target.files && e.target.files[0]
+  if(!f) return
+  if(!f.type.startsWith('image/')){ alert('이미지 파일만 업로드 가능합니다.'); return }
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    form.value.image = ev.target.result
+  }
+  reader.readAsDataURL(f)
+}
+
+function removeImage(){
+  form.value.image = ''
+  // also clear the file input element if needed
+  // (the template input won't persist the file across resets)
+}
 </script>
 
 <style scoped>
@@ -311,6 +342,10 @@ function formatDate(iso){
 .post-author{color:var(--text-secondary);font-size:0.9rem}
 .post-time{color:var(--text-muted);font-size:0.8rem;margin-left:auto}
 .post-actions{margin-top:8px;display:flex;gap:8px}
+.post-body{display:flex;gap:12px;align-items:flex-start;margin-top:8px}
+.post-thumb img{max-width:160px;max-height:120px;border-radius:6px;object-fit:cover}
+.image-preview img{max-width:180px;max-height:140px;border-radius:6px;display:block;margin-top:8px}
+.file-input label{display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px}
 .btn{padding:6px 10px;border-radius:6px;border:none;background:#eee;cursor:pointer}
 .btn.primary{background:#0078d4;color:#fff}
 .btn.danger{background:#ff6b6b;color:#fff}
