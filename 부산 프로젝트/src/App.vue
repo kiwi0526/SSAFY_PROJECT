@@ -35,10 +35,8 @@ export default {
 
 <style scoped>
 :root {
-  --bg: #fafafa;
-  --card: #fff;
-  --accent: #0078d4;
-  --muted: #666;
+  --navy:#082f4f; --blue:#087ea4; --sky:#e8f7fb; --ink:#182532; --muted:#687886;
+  --line:#e4ebef; --orange:#ff7a45; --white:#fff; --page:#eef3f6;
 }
 * {
   box-sizing: border-box;
@@ -48,12 +46,8 @@ html,
 #app {
   height: 100%;
   margin: 0;
-  font-family:
-    Inter,
-    Segoe UI,
-    Arial,
-    sans-serif;
-  background: var(--bg);
+  font-family: Pretendard, "Noto Sans KR", Segoe UI, Arial, sans-serif;
+  background: var(--page);
   color: #222;
 }
 .container {
@@ -62,8 +56,9 @@ html,
   padding: 0 16px;
 }
 .site-header {
-  background: #fff;
-  border-bottom: 1px solid #e6e6e6;
+  background: linear-gradient(90deg, #005f99 0%, #00a6d6 100%);
+  color: #fff;
+  border-bottom: none;
 }
 .site-header .container {
   display: flex;
@@ -73,7 +68,7 @@ html,
 }
 .logo {
   font-weight: 700;
-  color: var(--accent);
+  color: #fff;
   font-size: 1.25rem;
 }
 .nav {
@@ -81,7 +76,7 @@ html,
   gap: 12px;
 }
 .nav-item {
-  color: var(--muted);
+  color: rgba(255,255,255,0.9);
   text-decoration: none;
   font-weight: 600;
 }
@@ -103,17 +98,23 @@ html,
   justify-content: center;
 }
 .btn {
-  background: var(--accent);
-  color: #fff;
+  background: #fff;
+  color: #0078d4;
   border: none;
-  padding: 10px 18px;
-  border-radius: 6px;
-  cursor: not-allowed;
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+}
+.btn.primary {
+  background: #ff7a59;
+  color: #fff;
 }
 .btn.ghost {
   background: transparent;
-  border: 1px solid #ccc;
-  color: var(--muted);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.9);
 }
 .features {
   display: flex;

@@ -8,6 +8,7 @@
         <div class="field"><input v-model="form.title" placeholder="제목" required /></div>
         <div class="field"><input v-model="form.author" placeholder="작성자" required /></div>
         <div class="field"><textarea v-model="form.content" placeholder="본문" rows="4" required></textarea></div>
+        <div class="field"><input v-model="form.tagsInput" placeholder="태그 (콤마로 구분, 예: 해운대,맛집)" /></div>
         <div class="field"><input v-model="form.password" placeholder="비밀번호 (수정/삭제 권한)" /></div>
         <div class="actions">
           <button type="submit" class="btn primary">{{ editingId ? '수정' : '작성' }}</button>
@@ -26,6 +27,10 @@
             <option :value="10">10</option>
             <option :value="20">20</option>
           </select>
+        </div>
+        <div class="tag-filters">
+          <button v-for="tag in availableTags" :key="tag" :class="['tag-btn', {selected: selectedTags.includes(tag)}]" @click="toggleTag(tag)">#{{ tag }}</button>
+          <button v-if="selectedTags.length" class="clear-tags" @click="clearTags">초기화</button>
         </div>
       </div>
       <ul>
@@ -91,13 +96,18 @@ function loadPosts(){
 
 const posts = ref(loadPosts())
 const editingId = ref(null)
-const form = ref({ title: '', author: '', content: '', password: '' })
+const form = ref({ title: '', author: '', content: '', tagsInput: '', password: '' })
 
 const bookmarks = ref(loadBookmarks())
 const recommends = ref(loadRecommends())
 
 function persist(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(posts.value))
+}
+
+function parseTags(input){
+  if(!input) return []
+  return input.split(',').map(t=>t.trim()).filter(Boolean).map(t=>t.toLowerCase())
 }
 
 function encodePwd(p){
@@ -161,14 +171,24 @@ const sortedPosts = computed(() => {
 const searchQuery = ref('')
 const page = ref(1)
 const pageSize = ref(10)
+const selectedTags = ref([])
+
+const availableTags = computed(()=>{
+  const s = new Set()
+  posts.value.forEach(p=>{
+    (p.tags||[]).forEach(t=> s.add(t))
+  })
+  return Array.from(s)
+})
 
 const filteredPosts = computed(() => {
   const q = (searchQuery.value || '').toLowerCase().trim()
-  if(!q) return sortedPosts.value
   return sortedPosts.value.filter(p => {
-    return (p.title||'').toLowerCase().includes(q)
+    const matchesText = !q || (p.title||'').toLowerCase().includes(q)
       || (p.author||'').toLowerCase().includes(q)
       || (p.content||'').toLowerCase().includes(q)
+    const matchesTags = selectedTags.value.length === 0 || selectedTags.value.every(t => (p.tags||[]).includes(t))
+    return matchesText && matchesTags
   })
 })
 
@@ -197,7 +217,7 @@ watch(()=> route.query.id, async (id) => {
 
 function resetForm(){
   editingId.value = null
-  form.value = { title:'', author:'', content:'', password: '' }
+  form.value = { title:'', author:'', content:'', tagsInput:'', password: '' }
 }
 function savePost(){
   if(editingId.value){
@@ -208,11 +228,12 @@ function savePost(){
       posts.value[idx].content = form.value.content
       // update password only if a new one was provided
       if(form.value.password) posts.value[idx].password = encodePwd(form.value.password)
+      posts.value[idx].tags = parseTags(form.value.tagsInput)
       posts.value[idx].created_at = new Date().toISOString()
     }
   }else{
     const id = Date.now()
-    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString(), password: form.value.password ? encodePwd(form.value.password) : null })
+    posts.value.unshift({ id, title: form.value.title, author: form.value.author, content: form.value.content, created_at: new Date().toISOString(), password: form.value.password ? encodePwd(form.value.password) : null, tags: parseTags(form.value.tagsInput) })
   }
   persist()
   resetForm()
@@ -234,6 +255,13 @@ function openAuth(post, action){
   authInput.value = ''
   authModal.value = true
 }
+
+function toggleTag(tag){
+  if(selectedTags.value.includes(tag)) selectedTags.value = selectedTags.value.filter(t=>t!==tag)
+  else selectedTags.value = [...selectedTags.value, tag]
+}
+
+function clearTags(){ selectedTags.value = [] }
 
 function confirmAuth(){
   const post = posts.value.find(p=>p.id === authPostId.value)
@@ -287,4 +315,9 @@ function formatDate(iso){
 .btn.primary{background:#0078d4;color:#fff}
 .btn.danger{background:#ff6b6b;color:#fff}
 .highlighted{box-shadow:0 0 0 3px rgba(255,215,0,0.25);background:#fffbe6}
+/* tag filter styles */
+.tag-filters{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+.tag-btn{background:#f1f5f9;border:1px solid #e6eef3;padding:6px 10px;border-radius:999px;cursor:pointer;color:#334452}
+.tag-btn.selected{background:#0078d4;color:#fff;border-color:#0078d4}
+.clear-tags{background:transparent;border:0;color:#ff6b6b;cursor:pointer;font-weight:800}
 </style>
